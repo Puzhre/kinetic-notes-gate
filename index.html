@@ -17,27 +17,35 @@
     label { display:block; font-size:.85rem; margin-bottom:.35rem; color:var(--muted); }
     input[type=password] { width:100%; padding:.65rem .7rem; border:1px solid var(--line); background:#fff; font-size:1rem; letter-spacing:.08em; }
     button { margin-top:.85rem; width:100%; padding:.7rem; border:0; background:var(--accent); color:#fff; font-size:1rem; cursor:pointer; }
-    button:disabled { opacity:.6; cursor:wait; }
+    button:disabled { opacity:.55; cursor:default; }
     .err { color:var(--err); font-size:.9rem; margin-top:.75rem; min-height:1.2em; }
     #app { display:none; }
-    main { max-width:46rem; margin:0 auto; padding:2rem 1.25rem 4rem; }
-    h1{font-size:1.7rem;} h2{font-size:1.35rem; margin-top:2.2rem; border-bottom:1px solid var(--line); padding-bottom:.3rem;}
-    h3{font-size:1.12rem; color:var(--accent); margin-top:1.5rem;} h4{font-size:1.02rem; margin-top:1.2rem;}
+    main { max-width:46rem; margin:0 auto; padding:1.25rem 1.25rem 3rem; }
+    h1{font-size:1.45rem;} h2{font-size:1.22rem; margin-top:1.6rem; border-bottom:1px solid var(--line); padding-bottom:.25rem;}
+    h3{font-size:1.08rem; color:var(--accent); margin-top:1.2rem;} h4{font-size:1rem; margin-top:1rem;}
+    h1.crumb { font-size:.82rem; color:var(--muted); font-weight:500; margin:0 0 .4rem; border:0; }
     .meta{color:var(--muted);} .box{background:var(--card); border-left:3px solid var(--accent); padding:.85rem 1rem; margin:1rem 0;}
-    .box.def{border-color:#666;} .box.why{border-color:#2a7a4b;}
     .katex-display{overflow-x:auto;} code{font-family:ui-monospace,Menlo,monospace; font-size:.92em;}
     table { width:100%; border-collapse:collapse; margin:1rem 0; font-size:.95rem; }
     th, td { border:1px solid var(--line); padding:.45rem .55rem; text-align:left; vertical-align:top; }
     th { background:#efeae0; }
-    .topbar { display:flex; justify-content:flex-end; padding:.75rem 1.25rem; border-bottom:1px solid var(--line); background:#efeae0; }
-    .topbar button { width:auto; margin:0; background:transparent; color:var(--muted); border:1px solid var(--line); padding:.35rem .7rem; font-size:.85rem; }
+    .topbar { display:flex; justify-content:space-between; align-items:center; gap:.5rem; padding:.65rem 1.25rem; border-bottom:1px solid var(--line); background:#efeae0; position:sticky; top:0; z-index:2; }
+    .topbar .where { color:var(--muted); font-size:.88rem; }
+    .topbar button, .nav button { width:auto; margin:0; background:transparent; color:var(--ink); border:1px solid var(--line); padding:.4rem .75rem; font-size:.9rem; }
+    .nav { display:flex; justify-content:space-between; gap:.5rem; margin-top:2rem; padding-top:1rem; border-top:1px solid var(--line); }
+    .nav button.primary { background:var(--accent); color:#fff; border-color:var(--accent); }
+    .toc details { border-bottom:1px solid var(--line); padding:.35rem 0; }
+    .toc summary { cursor:pointer; font-weight:600; }
+    .toc ul { list-style:none; margin:.35rem 0 .4rem; padding:0 0 0 .4rem; }
+    .toc button.link { background:none; border:0; color:var(--accent); text-align:left; padding:.25rem 0; width:100%; font-size:.98rem; margin:0; }
+    .toc button.link:hover { text-decoration:underline; }
   </style>
 </head>
 <body>
   <div id="gate">
     <form class="card" id="unlock-form" autocomplete="current-password">
       <h1>笔记已加密</h1>
-      <p>输入访问密码后解密本地密文。仓库中不含明文内容。</p>
+      <p>输入访问密码后解密。目录与正文与学习笔记 PDF 对齐，按节分页。</p>
       <label for="pw">访问密码</label>
       <input id="pw" name="password" type="password" inputmode="numeric" required autofocus />
       <button type="submit" id="go">解锁</button>
@@ -46,12 +54,17 @@
   </div>
 
   <div id="app">
-    <div class="topbar"><button type="button" id="lock">重新锁定</button></div>
-    <main id="content"></main>
+    <div class="topbar">
+      <span class="where" id="where"></span>
+      <button type="button" id="lock">重新锁定</button>
+    </div>
+    <main id="view"></main>
   </div>
 
   <script>
-  const SESSION_KEY = 'kt_notes_unlocked_v1';
+  const SESSION_KEY = 'kt_notes_unlocked_v2';
+  let NOTES = null;
+  let page = -1; // -1 = TOC
 
   function b64ToBytes(b64) {
     const bin = atob(b64);
@@ -73,22 +86,13 @@
   }
 
   async function decryptPayload(password, payload) {
-    const salt = b64ToBytes(payload.salt);
-    const iv = b64ToBytes(payload.iv);
-    const ct = b64ToBytes(payload.ct);
-    const key = await deriveKey(password, salt, payload.iter);
-    const pt = await crypto.subtle.decrypt({ name: 'AES-GCM', iv }, key, ct);
+    const key = await deriveKey(password, b64ToBytes(payload.salt), payload.iter);
+    const pt = await crypto.subtle.decrypt(
+      { name: 'AES-GCM', iv: b64ToBytes(payload.iv) },
+      key,
+      b64ToBytes(payload.ct)
+    );
     return new TextDecoder().decode(pt);
-  }
-
-  function renderMath() {
-    if (!window.renderMathInElement) return;
-    renderMathInElement(document.getElementById('content'), {
-      delimiters: [
-        { left: '$$', right: '$$', display: true },
-        { left: '$', right: '$', display: false }
-      ]
-    });
   }
 
   function loadKatex(cb) {
@@ -104,12 +108,80 @@
     document.head.appendChild(s1);
   }
 
-  async function showContent(html) {
+  function renderMath() {
+    if (!window.renderMathInElement) return;
+    renderMathInElement(document.getElementById('view'), {
+      delimiters: [
+        { left: '\\[', right: '\\]', display: true },
+        { left: '\\(', right: '\\)', display: false },
+        { left: '$$', right: '$$', display: true },
+        { left: '$', right: '$', display: false }
+      ],
+      throwOnError: false
+    });
+  }
+
+  function esc(s) {
+    return s.replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+  }
+
+  function plainTitle(s) {
+    return s.replace(/\\\(|\\\)|\$/g, '').replace(/\\to/g, '→').replace(/\\Rightarrow/g, '⇒');
+  }
+
+  function showToc() {
+    page = -1;
+    location.hash = 'toc';
+    document.getElementById('where').textContent = '目录';
+    document.title = '目录 · Kinetic Theory 笔记';
+    const parts = ['<h1>目录</h1><p class="meta">与学习笔记 PDF 目录对齐。点开章节后进入对应节。</p><div class="toc">'];
+    NOTES.toc.forEach((ch, ci) => {
+      const open = ci === 0 ? ' open' : '';
+      parts.push(`<details${open}><summary>${esc(plainTitle(ch.title))}</summary><ul>`);
+      ch.children.forEach(child => {
+        parts.push(`<li><button type="button" class="link" data-idx="${child.idx}">${esc(plainTitle(child.title))}</button></li>`);
+      });
+      parts.push('</ul></details>');
+    });
+    parts.push('</div>');
+    const view = document.getElementById('view');
+    view.innerHTML = parts.join('');
+    view.querySelectorAll('button.link').forEach(btn => {
+      btn.addEventListener('click', () => showPage(Number(btn.dataset.idx)));
+    });
+    window.scrollTo(0, 0);
+  }
+
+  function showPage(i) {
+    if (i < 0 || i >= NOTES.pages.length) return showToc();
+    page = i;
+    location.hash = 'p' + i;
+    const p = NOTES.pages[i];
+    document.getElementById('where').textContent = `${i + 1} / ${NOTES.pages.length}`;
+    document.title = plainTitle(p.title);
+    const prevDis = i === 0 ? ' disabled' : '';
+    const nextDis = i === NOTES.pages.length - 1 ? ' disabled' : '';
+    document.getElementById('view').innerHTML =
+      p.html +
+      `<nav class="nav">
+        <button type="button" id="prev"${prevDis}>上一页</button>
+        <button type="button" id="toc" class="primary">目录</button>
+        <button type="button" id="next"${nextDis}>下一页</button>
+      </nav>`;
+    document.getElementById('prev').onclick = () => showPage(i - 1);
+    document.getElementById('next').onclick = () => showPage(i + 1);
+    document.getElementById('toc').onclick = showToc;
+    loadKatex(renderMath);
+    window.scrollTo(0, 0);
+  }
+
+  function enter(notes) {
+    NOTES = notes;
     document.getElementById('gate').style.display = 'none';
     document.getElementById('app').style.display = 'block';
-    document.getElementById('content').innerHTML = html;
-    document.title = 'Tong Kinetic Theory 学习笔记';
-    loadKatex(renderMath);
+    const m = (location.hash || '').match(/^#p(\d+)$/);
+    if (m) showPage(Number(m[1]));
+    else showToc();
   }
 
   async function tryUnlock(password, persist) {
@@ -119,11 +191,13 @@
     btn.disabled = true;
     try {
       const res = await fetch('payload.json', { cache: 'no-store' });
-      if (!res.ok) throw new Error('无法加载密文');
+      if (!res.ok) throw new Error('load');
       const payload = await res.json();
-      const html = await decryptPayload(password, payload);
+      const text = await decryptPayload(password, payload);
+      const notes = JSON.parse(text);
+      if (!notes.pages || !notes.toc) throw new Error('shape');
       if (persist) sessionStorage.setItem(SESSION_KEY, password);
-      await showContent(html);
+      enter(notes);
     } catch (e) {
       err.textContent = '密码错误或无法解密';
       sessionStorage.removeItem(SESSION_KEY);
@@ -134,12 +208,11 @@
 
   document.getElementById('unlock-form').addEventListener('submit', (e) => {
     e.preventDefault();
-    const pw = document.getElementById('pw').value;
-    tryUnlock(pw, true);
+    tryUnlock(document.getElementById('pw').value, true);
   });
-
   document.getElementById('lock').addEventListener('click', () => {
     sessionStorage.removeItem(SESSION_KEY);
+    location.hash = '';
     location.reload();
   });
 
