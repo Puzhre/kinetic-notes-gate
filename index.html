@@ -11,7 +11,7 @@
     * { box-sizing: border-box; }
     body { margin:0; font-family:"Noto Sans CJK SC","PingFang SC","Microsoft YaHei",sans-serif; background:var(--bg); color:var(--ink); line-height:1.65; }
     #gate { min-height:100vh; display:flex; align-items:center; justify-content:center; padding:1.5rem; }
-    .card { width:100%; max-width:22rem; background:var(--card); border:1px solid var(--line); padding:1.5rem 1.35rem; }
+    .card { width:100%; max-width:24rem; background:var(--card); border:1px solid var(--line); padding:1.5rem 1.35rem; }
     .card h1 { font-size:1.15rem; margin:0 0 .4rem; }
     .card p { margin:0 0 1rem; color:var(--muted); font-size:.92rem; }
     label { display:block; font-size:.85rem; margin-bottom:.35rem; color:var(--muted); }
@@ -21,31 +21,33 @@
     .err { color:var(--err); font-size:.9rem; margin-top:.75rem; min-height:1.2em; }
     #app { display:none; }
     main { max-width:46rem; margin:0 auto; padding:1.25rem 1.25rem 3rem; }
-    h1{font-size:1.45rem;} h2{font-size:1.22rem; margin-top:1.6rem; border-bottom:1px solid var(--line); padding-bottom:.25rem;}
+    h1{font-size:1.45rem;} h2{font-size:1.22rem; margin-top:1.4rem; border-bottom:1px solid var(--line); padding-bottom:.25rem;}
     h3{font-size:1.08rem; color:var(--accent); margin-top:1.2rem;} h4{font-size:1rem; margin-top:1rem;}
-    h1.crumb { font-size:.82rem; color:var(--muted); font-weight:500; margin:0 0 .4rem; border:0; }
-    .meta{color:var(--muted);} .box{background:var(--card); border-left:3px solid var(--accent); padding:.85rem 1rem; margin:1rem 0;}
+    .meta{color:var(--muted);} 
     .katex-display{overflow-x:auto;} code{font-family:ui-monospace,Menlo,monospace; font-size:.92em;}
     table { width:100%; border-collapse:collapse; margin:1rem 0; font-size:.95rem; }
     th, td { border:1px solid var(--line); padding:.45rem .55rem; text-align:left; vertical-align:top; }
     th { background:#efeae0; }
     .topbar { display:flex; justify-content:space-between; align-items:center; gap:.5rem; padding:.65rem 1.25rem; border-bottom:1px solid var(--line); background:#efeae0; position:sticky; top:0; z-index:2; }
     .topbar .where { color:var(--muted); font-size:.88rem; }
-    .topbar button, .nav button { width:auto; margin:0; background:transparent; color:var(--ink); border:1px solid var(--line); padding:.4rem .75rem; font-size:.9rem; }
-    .nav { display:flex; justify-content:space-between; gap:.5rem; margin-top:2rem; padding-top:1rem; border-top:1px solid var(--line); }
+    .topbar button, .nav button { width:auto; margin:0; background:#fff; color:var(--ink); border:1px solid var(--line); padding:.45rem .8rem; font-size:.92rem; }
+    .nav { display:flex; justify-content:space-between; gap:.5rem; margin-top:2.2rem; padding-top:1rem; border-top:1px solid var(--line); }
     .nav button.primary { background:var(--accent); color:#fff; border-color:var(--accent); }
-    .toc details { border-bottom:1px solid var(--line); padding:.35rem 0; }
-    .toc summary { cursor:pointer; font-weight:600; }
-    .toc ul { list-style:none; margin:.35rem 0 .4rem; padding:0 0 0 .4rem; }
-    .toc button.link { background:none; border:0; color:var(--accent); text-align:left; padding:.25rem 0; width:100%; font-size:.98rem; margin:0; }
+    .toc { list-style:none; margin:0; padding:0; }
+    .toc ul { list-style:none; margin:.15rem 0 .35rem; padding:0 0 0 .85rem; border-left:1px solid var(--line); }
+    .toc .row { display:flex; align-items:center; gap:.25rem; }
+    .toc button.link { background:none; border:0; color:var(--accent); text-align:left; padding:.28rem 0; width:auto; margin:0; font-size:.98rem; flex:1; }
     .toc button.link:hover { text-decoration:underline; }
+    .toc button.chev { width:1.6rem; margin:0; padding:0; background:transparent; color:var(--muted); border:0; font-size:.85rem; }
+    .toc .kids { display:none; }
+    .toc .kids.open { display:block; }
   </style>
 </head>
 <body>
   <div id="gate">
     <form class="card" id="unlock-form" autocomplete="current-password">
       <h1>笔记已加密</h1>
-      <p>输入访问密码后解密。目录与正文与学习笔记 PDF 对齐，按节分页。</p>
+      <p>目录与学习笔记 PDF 对齐，可逐级展开。解锁后在这台浏览器记住 30 天，站内翻页不用再输入密码。</p>
       <label for="pw">访问密码</label>
       <input id="pw" name="password" type="password" inputmode="numeric" required autofocus />
       <button type="submit" id="go">解锁</button>
@@ -56,15 +58,41 @@
   <div id="app">
     <div class="topbar">
       <span class="where" id="where"></span>
-      <button type="button" id="lock">重新锁定</button>
+      <button type="button" id="lock">清除记住的密码</button>
     </div>
     <main id="view"></main>
   </div>
 
   <script>
-  const SESSION_KEY = 'kt_notes_unlocked_v2';
+  const STORE = 'kt_notes_gate_v3';
+  const TTL = 30 * 24 * 60 * 60 * 1000;
   let NOTES = null;
-  let page = -1; // -1 = TOC
+  let page = -1;
+
+  function savePw(pw) {
+    localStorage.setItem(STORE, JSON.stringify({ pw: pw, exp: Date.now() + TTL }));
+    sessionStorage.removeItem('kt_notes_unlocked_v1');
+    sessionStorage.removeItem('kt_notes_unlocked_v2');
+  }
+  function loadPw() {
+    try {
+      const raw = localStorage.getItem(STORE);
+      if (!raw) return null;
+      const o = JSON.parse(raw);
+      if (!o || !o.pw || !o.exp || Date.now() > o.exp) {
+        localStorage.removeItem(STORE);
+        return null;
+      }
+      return o.pw;
+    } catch (e) {
+      return null;
+    }
+  }
+  function clearPw() {
+    localStorage.removeItem(STORE);
+    sessionStorage.removeItem('kt_notes_unlocked_v1');
+    sessionStorage.removeItem('kt_notes_unlocked_v2');
+  }
 
   function b64ToBytes(b64) {
     const bin = atob(b64);
@@ -72,7 +100,6 @@
     for (let i = 0; i < bin.length; i++) out[i] = bin.charCodeAt(i);
     return out;
   }
-
   async function deriveKey(password, salt, iterations) {
     const enc = new TextEncoder();
     const base = await crypto.subtle.importKey('raw', enc.encode(password), 'PBKDF2', false, ['deriveKey']);
@@ -84,7 +111,6 @@
       ['decrypt']
     );
   }
-
   async function decryptPayload(password, payload) {
     const key = await deriveKey(password, b64ToBytes(payload.salt), payload.iter);
     const pt = await crypto.subtle.decrypt(
@@ -94,7 +120,6 @@
     );
     return new TextDecoder().decode(pt);
   }
-
   function loadKatex(cb) {
     if (window.renderMathInElement) { cb(); return; }
     const s1 = document.createElement('script');
@@ -107,7 +132,6 @@
     };
     document.head.appendChild(s1);
   }
-
   function renderMath() {
     if (!window.renderMathInElement) return;
     renderMathInElement(document.getElementById('view'), {
@@ -120,13 +144,34 @@
       throwOnError: false
     });
   }
-
   function esc(s) {
     return s.replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
   }
-
   function plainTitle(s) {
-    return s.replace(/\\\(|\\\)|\$/g, '').replace(/\\to/g, '→').replace(/\\Rightarrow/g, '⇒');
+    return s.replace(/\\\(|\\\)|\$/g, '').replace(/\\to/g, '→').replace(/\\Rightarrow/g, '⇒').replace(/\\rightarrow/g, '→');
+  }
+
+  function tocHtml(nodes) {
+    return '<ul class="toc">' + nodes.map(n => {
+      const kids = n.children && n.children.length;
+      const label = esc(plainTitle(n.title));
+      const link = `<button type="button" class="link" data-idx="${n.idx}">${label}</button>`;
+      if (!kids) return `<li><div class="row">${link}</div></li>`;
+      return `<li><div class="row">${link}<button type="button" class="chev" aria-label="展开">▸</button></div><div class="kids">${tocHtml(n.children)}</div></li>`;
+    }).join('') + '</ul>';
+  }
+
+  function bindToc(root) {
+    root.querySelectorAll('button.link').forEach(btn => {
+      btn.addEventListener('click', () => showPage(Number(btn.dataset.idx)));
+    });
+    root.querySelectorAll('button.chev').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const kids = btn.parentElement.nextElementSibling;
+        const open = kids.classList.toggle('open');
+        btn.textContent = open ? '▾' : '▸';
+      });
+    });
   }
 
   function showToc() {
@@ -134,21 +179,9 @@
     location.hash = 'toc';
     document.getElementById('where').textContent = '目录';
     document.title = '目录 · Kinetic Theory 笔记';
-    const parts = ['<h1>目录</h1><p class="meta">与学习笔记 PDF 目录对齐。点开章节后进入对应节。</p><div class="toc">'];
-    NOTES.toc.forEach((ch, ci) => {
-      const open = ci === 0 ? ' open' : '';
-      parts.push(`<details${open}><summary>${esc(plainTitle(ch.title))}</summary><ul>`);
-      ch.children.forEach(child => {
-        parts.push(`<li><button type="button" class="link" data-idx="${child.idx}">${esc(plainTitle(child.title))}</button></li>`);
-      });
-      parts.push('</ul></details>');
-    });
-    parts.push('</div>');
     const view = document.getElementById('view');
-    view.innerHTML = parts.join('');
-    view.querySelectorAll('button.link').forEach(btn => {
-      btn.addEventListener('click', () => showPage(Number(btn.dataset.idx)));
-    });
+    view.innerHTML = '<h1>目录</h1><p class="meta">与学习笔记 PDF 目录一致，点 ▸ 展开，点标题进入该节。页末可翻页或回目录。</p>' + tocHtml(NOTES.toc);
+    bindToc(view);
     window.scrollTo(0, 0);
   }
 
@@ -157,17 +190,17 @@
     page = i;
     location.hash = 'p' + i;
     const p = NOTES.pages[i];
-    document.getElementById('where').textContent = `${i + 1} / ${NOTES.pages.length}`;
+    document.getElementById('where').textContent = (i + 1) + ' / ' + NOTES.pages.length;
     document.title = plainTitle(p.title);
     const prevDis = i === 0 ? ' disabled' : '';
     const nextDis = i === NOTES.pages.length - 1 ? ' disabled' : '';
     document.getElementById('view').innerHTML =
       p.html +
-      `<nav class="nav">
-        <button type="button" id="prev"${prevDis}>上一页</button>
-        <button type="button" id="toc" class="primary">目录</button>
-        <button type="button" id="next"${nextDis}>下一页</button>
-      </nav>`;
+      '<nav class="nav">' +
+        '<button type="button" id="prev"' + prevDis + '>上一页</button>' +
+        '<button type="button" id="toc" class="primary">目录</button>' +
+        '<button type="button" id="next"' + nextDis + '>下一页</button>' +
+      '</nav>';
     document.getElementById('prev').onclick = () => showPage(i - 1);
     document.getElementById('next').onclick = () => showPage(i + 1);
     document.getElementById('toc').onclick = showToc;
@@ -196,11 +229,13 @@
       const text = await decryptPayload(password, payload);
       const notes = JSON.parse(text);
       if (!notes.pages || !notes.toc) throw new Error('shape');
-      if (persist) sessionStorage.setItem(SESSION_KEY, password);
+      if (persist) savePw(password);
       enter(notes);
     } catch (e) {
       err.textContent = '密码错误或无法解密';
-      sessionStorage.removeItem(SESSION_KEY);
+      clearPw();
+      document.getElementById('gate').style.display = 'flex';
+      document.getElementById('app').style.display = 'none';
     } finally {
       btn.disabled = false;
     }
@@ -211,13 +246,13 @@
     tryUnlock(document.getElementById('pw').value, true);
   });
   document.getElementById('lock').addEventListener('click', () => {
-    sessionStorage.removeItem(SESSION_KEY);
+    clearPw();
     location.hash = '';
     location.reload();
   });
 
-  const cached = sessionStorage.getItem(SESSION_KEY);
-  if (cached) tryUnlock(cached, false);
+  const cached = loadPw();
+  if (cached) tryUnlock(cached, true);
   </script>
 </body>
 </html>
