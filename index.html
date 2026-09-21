@@ -23,6 +23,7 @@
     main { max-width:46rem; margin:0 auto; padding:1.25rem 1.25rem 3rem; }
     h1{font-size:1.45rem;} h2{font-size:1.22rem; margin-top:1.4rem; border-bottom:1px solid var(--line); padding-bottom:.25rem;}
     h3{font-size:1.08rem; color:var(--accent); margin-top:1.2rem;} h4{font-size:1rem; margin-top:1rem;}
+    blockquote { background: var(--card); border-left: 3px solid var(--accent); margin: 1rem 0; padding: .75rem 1rem; }
     .meta{color:var(--muted);} 
     .katex-display{overflow-x:auto;} code{font-family:ui-monospace,Menlo,monospace; font-size:.92em;}
     table { width:100%; border-collapse:collapse; margin:1rem 0; font-size:.95rem; }
@@ -47,7 +48,7 @@
   <div id="gate">
     <form class="card" id="unlock-form" autocomplete="current-password">
       <h1>笔记已加密</h1>
-      <p>目录与学习笔记 PDF 对齐，可逐级展开。解锁后在这台浏览器记住 30 天，站内翻页不用再输入密码。</p>
+      <p>目录按 David Tong, Kinetic Theory 原文。解锁后在这台浏览器记住 30 天，站内翻页不用再输入密码。</p>
       <label for="pw">访问密码</label>
       <input id="pw" name="password" type="password" inputmode="numeric" required autofocus />
       <button type="submit" id="go">解锁</button>
@@ -180,7 +181,7 @@
     document.getElementById('where').textContent = '目录';
     document.title = '目录 · Kinetic Theory 笔记';
     const view = document.getElementById('view');
-    view.innerHTML = '<h1>目录</h1><p class="meta">与学习笔记 PDF 目录一致，点 ▸ 展开，点标题进入该节。页末可翻页或回目录。</p>' + tocHtml(NOTES.toc);
+    view.innerHTML = '<h1>目录</h1><p class="meta">按 David Tong, Kinetic Theory 原目录。点 ▸ 展开，点标题进入该节。补充说明写在对应小节里。页末可翻页或回目录。</p>' + tocHtml(NOTES.toc);
     bindToc(view);
     window.scrollTo(0, 0);
   }
