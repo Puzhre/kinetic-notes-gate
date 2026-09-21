@@ -1,0 +1,150 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="robots" content="noindex,nofollow" />
+  <title>受保护的笔记</title>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.css" />
+  <style>
+    :root { --bg:#f7f5f0; --ink:#1c1b19; --muted:#5c574e; --line:#d9d2c5; --accent:#1f4b7a; --card:#fff; --err:#8b2e2e; }
+    * { box-sizing: border-box; }
+    body { margin:0; font-family:"Noto Sans CJK SC","PingFang SC","Microsoft YaHei",sans-serif; background:var(--bg); color:var(--ink); line-height:1.65; }
+    #gate { min-height:100vh; display:flex; align-items:center; justify-content:center; padding:1.5rem; }
+    .card { width:100%; max-width:22rem; background:var(--card); border:1px solid var(--line); padding:1.5rem 1.35rem; }
+    .card h1 { font-size:1.15rem; margin:0 0 .4rem; }
+    .card p { margin:0 0 1rem; color:var(--muted); font-size:.92rem; }
+    label { display:block; font-size:.85rem; margin-bottom:.35rem; color:var(--muted); }
+    input[type=password] { width:100%; padding:.65rem .7rem; border:1px solid var(--line); background:#fff; font-size:1rem; letter-spacing:.08em; }
+    button { margin-top:.85rem; width:100%; padding:.7rem; border:0; background:var(--accent); color:#fff; font-size:1rem; cursor:pointer; }
+    button:disabled { opacity:.6; cursor:wait; }
+    .err { color:var(--err); font-size:.9rem; margin-top:.75rem; min-height:1.2em; }
+    #app { display:none; }
+    main { max-width:46rem; margin:0 auto; padding:2rem 1.25rem 4rem; }
+    h1{font-size:1.7rem;} h2{font-size:1.35rem; margin-top:2.2rem; border-bottom:1px solid var(--line); padding-bottom:.3rem;}
+    h3{font-size:1.12rem; color:var(--accent); margin-top:1.5rem;} h4{font-size:1.02rem; margin-top:1.2rem;}
+    .meta{color:var(--muted);} .box{background:var(--card); border-left:3px solid var(--accent); padding:.85rem 1rem; margin:1rem 0;}
+    .box.def{border-color:#666;} .box.why{border-color:#2a7a4b;}
+    .katex-display{overflow-x:auto;} code{font-family:ui-monospace,Menlo,monospace; font-size:.92em;}
+    table { width:100%; border-collapse:collapse; margin:1rem 0; font-size:.95rem; }
+    th, td { border:1px solid var(--line); padding:.45rem .55rem; text-align:left; vertical-align:top; }
+    th { background:#efeae0; }
+    .topbar { display:flex; justify-content:flex-end; padding:.75rem 1.25rem; border-bottom:1px solid var(--line); background:#efeae0; }
+    .topbar button { width:auto; margin:0; background:transparent; color:var(--muted); border:1px solid var(--line); padding:.35rem .7rem; font-size:.85rem; }
+  </style>
+</head>
+<body>
+  <div id="gate">
+    <form class="card" id="unlock-form" autocomplete="current-password">
+      <h1>笔记已加密</h1>
+      <p>输入访问密码后解密本地密文。仓库中不含明文内容。</p>
+      <label for="pw">访问密码</label>
+      <input id="pw" name="password" type="password" inputmode="numeric" required autofocus />
+      <button type="submit" id="go">解锁</button>
+      <div class="err" id="err" aria-live="polite"></div>
+    </form>
+  </div>
+
+  <div id="app">
+    <div class="topbar"><button type="button" id="lock">重新锁定</button></div>
+    <main id="content"></main>
+  </div>
+
+  <script>
+  const SESSION_KEY = 'kt_notes_unlocked_v1';
+
+  function b64ToBytes(b64) {
+    const bin = atob(b64);
+    const out = new Uint8Array(bin.length);
+    for (let i = 0; i < bin.length; i++) out[i] = bin.charCodeAt(i);
+    return out;
+  }
+
+  async function deriveKey(password, salt, iterations) {
+    const enc = new TextEncoder();
+    const base = await crypto.subtle.importKey('raw', enc.encode(password), 'PBKDF2', false, ['deriveKey']);
+    return crypto.subtle.deriveKey(
+      { name: 'PBKDF2', salt, iterations, hash: 'SHA-256' },
+      base,
+      { name: 'AES-GCM', length: 256 },
+      false,
+      ['decrypt']
+    );
+  }
+
+  async function decryptPayload(password, payload) {
+    const salt = b64ToBytes(payload.salt);
+    const iv = b64ToBytes(payload.iv);
+    const ct = b64ToBytes(payload.ct);
+    const key = await deriveKey(password, salt, payload.iter);
+    const pt = await crypto.subtle.decrypt({ name: 'AES-GCM', iv }, key, ct);
+    return new TextDecoder().decode(pt);
+  }
+
+  function renderMath() {
+    if (!window.renderMathInElement) return;
+    renderMathInElement(document.getElementById('content'), {
+      delimiters: [
+        { left: '$$', right: '$$', display: true },
+        { left: '$', right: '$', display: false }
+      ]
+    });
+  }
+
+  function loadKatex(cb) {
+    if (window.renderMathInElement) { cb(); return; }
+    const s1 = document.createElement('script');
+    s1.src = 'https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.js';
+    s1.onload = () => {
+      const s2 = document.createElement('script');
+      s2.src = 'https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/contrib/auto-render.min.js';
+      s2.onload = cb;
+      document.head.appendChild(s2);
+    };
+    document.head.appendChild(s1);
+  }
+
+  async function showContent(html) {
+    document.getElementById('gate').style.display = 'none';
+    document.getElementById('app').style.display = 'block';
+    document.getElementById('content').innerHTML = html;
+    document.title = 'Tong Kinetic Theory 学习笔记';
+    loadKatex(renderMath);
+  }
+
+  async function tryUnlock(password, persist) {
+    const err = document.getElementById('err');
+    const btn = document.getElementById('go');
+    err.textContent = '';
+    btn.disabled = true;
+    try {
+      const res = await fetch('payload.json', { cache: 'no-store' });
+      if (!res.ok) throw new Error('无法加载密文');
+      const payload = await res.json();
+      const html = await decryptPayload(password, payload);
+      if (persist) sessionStorage.setItem(SESSION_KEY, password);
+      await showContent(html);
+    } catch (e) {
+      err.textContent = '密码错误或无法解密';
+      sessionStorage.removeItem(SESSION_KEY);
+    } finally {
+      btn.disabled = false;
+    }
+  }
+
+  document.getElementById('unlock-form').addEventListener('submit', (e) => {
+    e.preventDefault();
+    const pw = document.getElementById('pw').value;
+    tryUnlock(pw, true);
+  });
+
+  document.getElementById('lock').addEventListener('click', () => {
+    sessionStorage.removeItem(SESSION_KEY);
+    location.reload();
+  });
+
+  const cached = sessionStorage.getItem(SESSION_KEY);
+  if (cached) tryUnlock(cached, false);
+  </script>
+</body>
+</html>
