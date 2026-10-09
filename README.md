@@ -1,6 +1,6 @@
 # kinetic-notes-gate
 
-Public GitHub Pages gate for Kinetic Theory study notes.
+Public GitHub Pages gate for Kinetic Theory study notes (**self-contained deep edition**).
 
 **This repository never contains plaintext notes or LaTeX/PDF sources.**  
 Only AES-GCM ciphertext (`payload.json`, `source/*.enc.json`) and the unlock UI are published.
