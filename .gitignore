@@ -1,0 +1,15 @@
+# NEVER upload plaintext notes or decrypted output
+*.tex
+*.pdf
+*.aux
+*.log
+*.out
+*.toc
+*.html
+!index.html
+decoded/
+/tmp/
+.env
+access-password
+**/access-password
+*.decrypted.*
